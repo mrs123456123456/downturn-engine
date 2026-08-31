@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title id="pageTitle">Downturn Strategy Engine (10% Deltas)</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%230b132b'/><path d='M14 46 L26 46 L26 34 L38 34 L38 22 L50 22' fill='none' stroke='%2348cae4' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/><polyline points='42,16 52,22 42,28' fill='none' stroke='%2310b981' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #0b132b;
+      --card-bg: #1c2541;
+      --border: #3a506b;
+      --accent: #48cae4;
+      --green: #10b981;
+      --red: #f72585;
+      --yellow: #f59e0b;
+      --purple: #8b5cf6;
+      --text: #edf2f4;
+      --text-muted: #8d99ae;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 24px; }
+    .container { max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+    h1 { font-size: 24px; font-weight: 700; color: var(--text); }
+    p.subtitle { color: var(--text-muted); font-size: 14px; margin-top: 4px; }
+    .grid { display: grid; grid-template-columns: 360px 1fr; gap: 20px; }
+    @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } }
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+    .card h2 { font-size: 16px; margin-bottom: 14px; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+    .form-group { margin-bottom: 12px; display: flex; flex-direction: column; gap: 4px; }
+    label { font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
+    input, select { background: #0b132b; border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; color: var(--text); font-size: 14px; outline: none; }
+    input:focus, select:focus { border-color: var(--accent); }
+    
+    .ticker-row { display: flex; gap: 8px; }
+    .ticker-input { text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; flex: 1; }
+    .btn-fetch { background: #111a33; border: 1px solid var(--accent); color: var(--accent); font-weight: 600; font-size: 12px; padding: 0 12px; border-radius: 6px; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+    .btn-fetch:hover { background: var(--accent); color: #0b132b; }
+    .status-badge { font-size: 11px; margin-top: 2px; color: var(--text-muted); }
+    
+    .quick-select { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+    .quick-pill { background: #111a33; border: 1px solid var(--border); color: var(--accent); font-size: 11px; padding: 3px 8px; border-radius: 4px; cursor: pointer; font-weight: 600; }
+    .quick-pill:hover { background: var(--border); }
+    
+    .tier-input-grid { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+    .tier-item { display: flex; align-items: center; justify-content: space-between; background: #0b132b; padding: 8px 12px; border-radius: 6px; font-size: 13px; border: 1px solid var(--border); }
+    .tier-item input { width: 70px; text-align: right; padding: 5px; }
+    
+    .metrics-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+    @media (max-width: 700px) { .metrics-row { grid-template-columns: repeat(2, 1fr); } }
+    .metric { background: #0b132b; border: 1px solid var(--border); padding: 10px; border-radius: 8px; }
+    .metric .lbl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; }
+    .metric .val { font-size: 16px; font-weight: 700; margin-top: 2px; }
+    .val.green { color: var(--green); }
+    
+    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+    th, td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--border); }
+    th:first-child, td:first-child { text-align: left; }
+    th { background: #111a33; color: var(--text-muted); font-weight: 600; }
+    
+    .chart-box { height: 280px; width: 100%; margin-top: 10px; }
+    .history-chart-box { height: 340px; width: 100%; margin-top: 10px; }
+    .pill { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+    .pill-equal { background: rgba(72, 202, 228, 0.2); color: var(--accent); }
+    .pill-front { background: rgba(245, 158, 11, 0.2); color: var(--yellow); }
+    .pill-mid { background: rgba(139, 92, 246, 0.2); color: var(--purple); }
+    .pill-back { background: rgba(16, 185, 129, 0.2); color: var(--green); }
+    
+    .total-pill { font-weight: 600; padding: 4px 8px; border-radius: 4px; margin-top: 4px; display: inline-block; font-size: 12px; }
+    .total-valid { color: var(--green); }
+    .total-invalid { color: var(--red); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div>
+      <h1>Downturn Strategy Engine (10% Deltas)</h1>
+      <p class="subtitle">5-Stage Tranche Execution Ladder (-10% to -50%) & Strategy Comparison</p>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Strategy Configuration</h2>
+        
+        <div class="form-group">
+          <label>Asset Symbol / Ticker</label>
+          <div class="ticker-row">
+            <input type="text" id="symbolInput" class="ticker-input" value="VOO" placeholder="e.g. MSFT, AAPL, NVDA, SPY" onkeydown="if(event.key==='Enter') fetchTickerData()" oninput="handleTickerInput()" />
+            <button class="btn-fetch" onclick="fetchTickerData()">Fetch High</button>
+          </div>
+          <div id="fetchStatus" class="status-badge">Loaded default preset for VOO</div>
+          <div class="quick-select">
+            <span class="quick-pill" onclick="setQuickTicker('VOO')">VOO</span>
+            <span class="quick-pill" onclick="setQuickTicker('SPY')">SPY</span>
+            <span class="quick-pill" onclick="setQuickTicker('QQQ')">QQQ</span>
+            <span class="quick-pill" onclick="setQuickTicker('MSFT')">MSFT</span>
+            <span class="quick-pill" onclick="setQuickTicker('AAPL')">AAPL</span>
+            <span class="quick-pill" onclick="setQuickTicker('NVDA')">NVDA</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Anchor Baseline Price (ATH / 52-Wk High $)</label>
+          <input type="number" id="highPrice" value="716.39" step="0.01" oninput="updateAll()" />
+        </div>
+
+        <div class="form-group">
+          <label>Initial Cash Capital ($)</label>
+          <input type="number" id="initialCash" value="1000000" step="50000" oninput="updateAll()" />
+        </div>
+
+        <div class="form-group">
+          <label>Active Preset Profile</label>
+          <select id="presetSelect" onchange="loadPreset()">
+            <option value="equal">Equal Allocation (20% x 5 Tiers)</option>
+            <option value="front">Front-Loaded (40% / 30% / 15% / 10% / 5%)</option>
+            <option value="midpoint" selected>Midpoint-Weighted (10% / 30% / 35% / 15% / 10%)</option>
+            <option value="back">Back-Loaded (5% / 10% / 20% / 35% / 30%)</option>
+            <option value="custom">Custom Tranches</option>
+          </select>
+        </div>
+
+        <label style="margin-top: 10px; display: block;">Tranche Allocations (10% Steps)</label>
+        <div class="tier-input-grid" id="tierInputs"></div>
+        <div id="allocationTotalDisplay" style="margin-top: 6px;"></div>
+
+        <div class="form-group" style="margin-top: 16px;">
+          <label style="color: var(--accent);">Inspect Drop Scenario</label>
+          <select id="inspectDrop" onchange="updateAll()">
+            <option value="10">Market Drop: -10% (Correction Entry)</option>
+            <option value="20">Market Drop: -20% (Bear Market Threshold)</option>
+            <option value="30" selected>Market Drop: -30% (Deep Bear Market)</option>
+            <option value="40">Market Drop: -40% (Severe Crash)</option>
+            <option value="50">Market Drop: -50% (Generational Bottom)</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 20px;">
+        <div class="card">
+          <h2>Active Profile Status @ <span id="selectedDropLbl">-30%</span> Drop</h2>
+          
+          <div class="metrics-row">
+            <div class="metric">
+              <div class="lbl">Cash Deployed</div>
+              <div class="val" id="mDeployed">$1,500,000</div>
+            </div>
+            <div class="metric">
+              <div class="lbl">Cash Remaining</div>
+              <div class="val" id="mCash">$500,000</div>
+            </div>
+            <div class="metric">
+              <div class="lbl">Total Bottom NAV</div>
+              <div class="val" id="mBottomNav">$1,791,372</div>
+            </div>
+            <div class="metric">
+              <div class="lbl">Recovery NAV @ ATH</div>
+              <div class="val green" id="mRecoveryNav">$2,344,821</div>
+            </div>
+          </div>
+
+          <div class="chart-box">
+            <canvas id="navChart"></canvas>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Max History Price Chart & Trigger Levels (<span id="historyChartTicker">VOO</span>)</h2>
+          <p class="subtitle" style="margin-bottom: 8px;">Dashed horizontal lines mark tranche trigger execution prices (-10% to -50%) relative to baseline.</p>
+          <div class="history-chart-box">
+            <canvas id="historyChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Active Profile Full Deployment Schedule (<span id="scheduleTicker">VOO</span>)</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Drop %</th>
+            <th><span id="colTicker">VOO</span> Trigger Price</th>
+            <th>Tranche Allocation</th>
+            <th>Tranche Cash</th>
+            <th>Shares Acquired</th>
+            <th>Cum. Shares</th>
+            <th>Cash Remaining</th>
+            <th>NAV @ Bottom</th>
+            <th>Recovery NAV @ ATH</th>
+            <th>Recovery Gain ($ / %)</th>
+          </tr>
+        </thead>
+        <tbody id="activeScheduleBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Side-by-Side Strategy Comparison @ <span id="compDropLbl">-30%</span> Drop</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Strategy Profile</th>
+            <th>Cash Deployed</th>
+            <th>Cash Left</th>
+            <th>Shares Bought</th>
+            <th>Avg Cost / Share</th>
+            <th>Bottom NAV</th>
+            <th>Recovery NAV @ ATH</th>
+            <th>Recovery Return (%)</th>
+          </tr>
+        </thead>
+        <tbody id="compTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    let barChartInstance = null;
+    let historyChartInstance = null;
+    let debounceTimer = null;
+    let historicalData = { labels: [], prices: [] };
+
+    const dropSteps = [10, 20, 30, 40, 50];
+
+    const presets = {
+      equal: [20, 20, 20, 20, 20],
+      front: [40, 30, 15, 10, 5],
+      midpoint: [10, 30, 35, 15, 10],
+      back: [5, 10, 20, 35, 30]
+    };
+
+    const defaultBaselines = {
+      VOO: 716.39,
+      SPY: 598.00,
+      QQQ: 525.00,
+      VT: 125.00,
+      MSFT: 468.00,
+      AAPL: 237.00,
+      NVDA: 140.00,
+      AMZN: 215.00,
+      GOOGL: 195.00,
+      META: 610.00,
+      TSLA: 260.00,
+      SCHD: 85.00
+    };
+
+    let activeWeights = [...presets.midpoint];
+
+    const barLabelsPlugin = {
+      id: 'barLabels',
+      afterDatasetsDraw(chart) {
+        const { ctx } = chart;
+        ctx.save();
+        chart.data.datasets.forEach((dataset, i) => {
+          const meta = chart.getDatasetMeta(i);
+          meta.data.forEach((bar, index) => {
+            const val = dataset.data[index];
+            if (val !== undefined && val !== null) {
+              const text = '$' + Math.round(val).toLocaleString();
+              ctx.fillStyle = '#edf2f4';
+              ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'bottom';
+              ctx.fillText(text, bar.x, bar.y - 6);
+            }
+          });
+        });
+        ctx.restore();
+      }
+    };
+
+    const triggerLinesPlugin = {
+      id: 'triggerLines',
+      afterDraw(chart) {
+        const { ctx, chartArea, scales } = chart;
+        if (!scales.y || !chartArea) return;
+
+        const highPrice = parseFloat(document.getElementById('highPrice').value) || 0;
+        if (!highPrice) return;
+
+        const lineColors = ['#f59e0b', '#8b5cf6', '#48cae4', '#10b981', '#f72585'];
+
+        ctx.save();
+        dropSteps.forEach((drop, idx) => {
+          const triggerPrice = highPrice * (1 - drop / 100);
+          const yPixel = scales.y.getPixelForValue(triggerPrice);
+
+          if (yPixel >= chartArea.top && yPixel <= chartArea.bottom) {
+            ctx.beginPath();
+            ctx.setLineDash([5, 4]);
+            ctx.strokeStyle = lineColors[idx % lineColors.length];
+            ctx.lineWidth = 1.5;
+            ctx.moveTo(chartArea.left, yPixel);
+            ctx.lineTo(chartArea.right, yPixel);
+            ctx.stroke();
+
+            ctx.fillStyle = lineColors[idx % lineColors.length];
+            ctx.font = 'bold 11px -apple-system, sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText(`-${drop}% ($${triggerPrice.toFixed(0)})`, chartArea.right - 8, yPixel - 4);
+          }
+        });
+        ctx.restore();
+      }
+    };
+
+    function getActiveSymbol() {
+      return (document.getElementById('symbolInput').value.trim() || 'VOO').toUpperCase();
+    }
+
+    function setStatus(msg, color = 'var(--text-muted)') {
+      const el = document.getElementById('fetchStatus');
+      el.innerText = msg;
+      el.style.color = color;
+    }
+
+    function handleTickerInput() {
+      clearTimeout(debounceTimer);
+      const sym = getActiveSymbol();
+      
+      if (defaultBaselines[sym]) {
+        document.getElementById('highPrice').value = defaultBaselines[sym];
+        setStatus(`Matched preset for ${sym} ($${defaultBaselines[sym]})`, 'var(--accent)');
+      }
+      
+      debounceTimer = setTimeout(() => {
+        fetchTickerData();
+      }, 700);
+      
+      updateAll();
+    }
+
+    async function fetchTickerData() {
+      const sym = getActiveSymbol();
+      if (!sym) return;
+
+      setStatus(`Fetching historical data & 52-wk high for ${sym}...`, 'var(--yellow)');
+
+      try {
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=max&interval=1wk`;
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+        
+        const response = await fetch(proxyUrl);
+        if (!response.ok) throw new Error('Network error');
+        
+        const data = await response.json();
+        const parsed = JSON.parse(data.contents);
+        const result = parsed.chart.result[0];
+        const meta = result.meta;
+        
+        let high = meta.fiftyTwoWeekHigh || meta.regularMarketDayHigh || meta.chartPreviousClose;
+        
+        if (!high && result.indicators.quote[0].high) {
+          const highs = result.indicators.quote[0].high.filter(Boolean);
+          high = Math.max(...highs);
+        }
+
+        if (high) {
+          document.getElementById('highPrice').value = parseFloat(high).toFixed(2);
+          setStatus(`✓ Loaded ${sym} (52-Wk High: $${parseFloat(high).toFixed(2)})`, 'var(--green)');
+        }
+
+        const timestamps = result.timestamp || [];
+        const closes = result.indicators.quote[0].close || [];
+        
+        const parsedLabels = [];
+        const parsedPrices = [];
+
+        for (let i = 0; i < timestamps.length; i++) {
+          if (closes[i] !== null && closes[i] !== undefined) {
+            const date = new Date(timestamps[i] * 1000);
+            parsedLabels.push(date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0'));
+            parsedPrices.push(parseFloat(closes[i].toFixed(2)));
+          }
+        }
+
+        historicalData = { labels: parsedLabels, prices: parsedPrices };
+
+      } catch (err) {
+        if (defaultBaselines[sym]) {
+          document.getElementById('highPrice').value = defaultBaselines[sym];
+          setStatus(`Offline baseline loaded for ${sym} ($${defaultBaselines[sym]})`, 'var(--text-muted)');
+        } else {
+          setStatus(`Could not fetch ${sym} live. Please enter high price manually.`, 'var(--yellow)');
+        }
+        generateFallbackHistory(sym);
+      }
+      updateAll();
+    }
+
+    function generateFallbackHistory(sym) {
+      const high = parseFloat(document.getElementById('highPrice').value) || 500;
+      const years = 15;
+      const labels = [];
+      const prices = [];
+      const currentYear = new Date().getFullYear();
+
+      for (let i = years; i >= 0; i--) {
+        labels.push(`${currentYear - i}`);
+        const factor = Math.pow(1.10, -i) * (0.85 + Math.random() * 0.3);
+        prices.push(parseFloat((high * Math.min(1, factor)).toFixed(2)));
+      }
+      historicalData = { labels, prices };
+    }
+
+    function setQuickTicker(sym) {
+      document.getElementById('symbolInput').value = sym;
+      if (defaultBaselines[sym]) {
+        document.getElementById('highPrice').value = defaultBaselines[sym];
+      }
+      fetchTickerData();
+    }
+
+    function renderInputs() {
+      const container = document.getElementById('tierInputs');
+      container.innerHTML = '';
+      dropSteps.forEach((drop, idx) => {
+        const div = document.createElement('div');
+        div.className = 'tier-item';
+        div.innerHTML = `
+          <span>Tier ${idx + 1} (-${drop}% drop):</span>
+          <div><input type="number" value="${activeWeights[idx]}" min="0" max="100" onchange="onWeightChange(${idx}, this.value)" /> %</div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function loadPreset() {
+      const val = document.getElementById('presetSelect').value;
+      if (val !== 'custom') {
+        activeWeights = [...presets[val]];
+        renderInputs();
+        updateAll();
+      }
+    }
+
+    function onWeightChange(idx, val) {
+      activeWeights[idx] = parseFloat(val) || 0;
+      document.getElementById('presetSelect').value = 'custom';
+      updateAll();
+    }
+
+    function calculateProfileOutcome(weights, initialCash, highPrice, inspectDrop) {
+      let cumShares = 0;
+      let cumDeployed = 0;
+
+      for (let i = 0; i < dropSteps.length; i++) {
+        const drop = dropSteps[i];
+        if (drop > inspectDrop) break;
+
+        const trancheCash = initialCash * (weights[i] / 100);
+        const price = highPrice * (1 - drop / 100);
+        const shares = price > 0 ? (trancheCash / price) : 0;
+
+        cumShares += shares;
+        cumDeployed += trancheCash;
+      }
+
+      const inspectPrice = highPrice * (1 - inspectDrop / 100);
+      const cashLeft = initialCash - cumDeployed;
+      const assetValAtDrop = cumShares * inspectPrice;
+      const bottomNAV = cashLeft + assetValAtDrop;
+      const recoveryNAV = cashLeft + (cumShares * highPrice);
+      const gain = recoveryNAV - initialCash;
+      const gainPct = initialCash > 0 ? (gain / initialCash) * 100 : 0;
+      const avgCost = cumShares > 0 ? cumDeployed / cumShares : 0;
+
+      return { cumDeployed, cashLeft, cumShares, avgCost, bottomNAV, recoveryNAV, gain, gainPct };
+    }
+
+    function updateAll() {
+      const sym = getActiveSymbol();
+      const initialCash = parseFloat(document.getElementById('initialCash').value) || 0;
+      const highPrice = parseFloat(document.getElementById('highPrice').value) || 1;
+      const inspectDrop = parseInt(document.getElementById('inspectDrop').value);
+
+      document.getElementById('pageTitle').innerText = 'Downturn Strategy Engine (10% Deltas)';
+      document.getElementById('scheduleTicker').innerText = sym;
+      document.getElementById('colTicker').innerText = sym;
+      document.getElementById('historyChartTicker').innerText = sym;
+
+      document.getElementById('selectedDropLbl').innerText = `-${inspectDrop}%`;
+      document.getElementById('compDropLbl').innerText = `-${inspectDrop}%`;
+
+      const totalWeight = activeWeights.reduce((a, b) => a + b, 0);
+      const totalDisplay = document.getElementById('allocationTotalDisplay');
+      if (totalWeight === 100) {
+        totalDisplay.innerHTML = `<span class="total-pill total-valid">Total Allocated: 100%</span>`;
+      } else {
+        totalDisplay.innerHTML = `<span class="total-pill total-invalid">Total Allocated: ${totalWeight}% (Must equal 100%)</span>`;
+      }
+
+      const activeRes = calculateProfileOutcome(activeWeights, initialCash, highPrice, inspectDrop);
+      document.getElementById('mDeployed').innerText = `$${activeRes.cumDeployed.toLocaleString(undefined, {maximumFractionDigits:0})}`;
+      document.getElementById('mCash').innerText = `$${activeRes.cashLeft.toLocaleString(undefined, {maximumFractionDigits:0})}`;
+      document.getElementById('mBottomNav').innerText = `$${activeRes.bottomNAV.toLocaleString(undefined, {maximumFractionDigits:0})}`;
+      document.getElementById('mRecoveryNav').innerText = `$${activeRes.recoveryNAV.toLocaleString(undefined, {maximumFractionDigits:0})} (+${activeRes.gainPct.toFixed(1)}%)`;
+
+      const schedBody = document.getElementById('activeScheduleBody');
+      schedBody.innerHTML = '';
+      let runningShares = 0;
+      let runningDeployed = 0;
+
+      for (let i = 0; i < dropSteps.length; i++) {
+        const drop = dropSteps[i];
+        const pct = activeWeights[i];
+        const trancheCash = initialCash * (pct / 100);
+        const price = highPrice * (1 - drop / 100);
+        const shares = price > 0 ? trancheCash / price : 0;
+        
+        runningShares += shares;
+        runningDeployed += trancheCash;
+        const cashLeft = initialCash - runningDeployed;
+        const bottomNAV = cashLeft + (runningShares * price);
+        const recoveryNAV = cashLeft + (runningShares * highPrice);
+        const gain = recoveryNAV - initialCash;
+        const gainPct = initialCash > 0 ? (gain / initialCash) * 100 : 0;
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td><strong>-${drop}%</strong></td>
+          <td>$${price.toFixed(2)}</td>
+          <td>${pct}%</td>
+          <td>$${trancheCash.toLocaleString(undefined, {maximumFractionDigits:0})}</td>
+          <td>${shares.toFixed(2)}</td>
+          <td>${runningShares.toFixed(2)}</td>
+          <td>$${cashLeft.toLocaleString(undefined, {maximumFractionDigits:0})}</td>
+          <td>$${bottomNAV.toLocaleString(undefined, {maximumFractionDigits:0})}</td>
+          <td style="color: var(--green); font-weight:600;">$${recoveryNAV.toLocaleString(undefined, {maximumFractionDigits:0})}</td>
+          <td style="color: var(--green); font-weight:600;">+$${gain.toLocaleString(undefined, {maximumFractionDigits:0})} (+${gainPct.toFixed(1)}%)</td>
+        `;
+        schedBody.appendChild(row);
+      }
+
+      const compBody = document.getElementById('compTableBody');
+      compBody.innerHTML = '';
+
+      const profiles = [
+        { key: 'equal', name: 'Equal (20% x 5)', pill: 'pill-equal', weights: presets.equal },
+        { key: 'front', name: 'Front-Loaded', pill: 'pill-front', weights: presets.front },
+        { key: 'midpoint', name: 'Midpoint-Weighted', pill: 'pill-mid', weights: presets.midpoint },
+        { key: 'back', name: 'Back-Loaded', pill: 'pill-back', weights: presets.back }
+      ];
+
+      const chartLabels = [];
+      const chartRecoveryNAV = [];
+
+      profiles.forEach(p => {
+        const res = calculateProfileOutcome(p.weights, initialCash, highPrice, inspectDrop);
+        chartLabels.push(p.name);
+        chartRecoveryNAV.push(res.recoveryNAV);
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td><span class="pill ${p.pill}">${p.name}</span></td>
+          <td>$${res.cumDeployed.toLocaleString(undefined, {maximumFractionDigits:0})}</td>
+          <td>$${res.cashLeft.toLocaleString(undefined, {maximumFractionDigits:0})}</td>
+          <td>${res.cumShares.toFixed(2)}</td>
+          <td>$${res.avgCost.toFixed(2)}</td>
+          <td>$${res.bottomNAV.toLocaleString(undefined, {maximumFractionDigits:0})}</td>
+          <td style="color: var(--green); font-weight:600;">$${res.recoveryNAV.toLocaleString(undefined, {maximumFractionDigits:0})}</td>
+          <td style="color: var(--green); font-weight:600;">+${res.gainPct.toFixed(1)}%</td>
+        `;
+        compBody.appendChild(row);
+      });
+
+      renderBarChart(chartLabels, chartRecoveryNAV);
+      renderHistoryChart();
+    }
+
+    function renderBarChart(labels, recoveryNAVData) {
+      const ctx = document.getElementById('navChart').getContext('2d');
+      if (barChartInstance) barChartInstance.destroy();
+
+      barChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Recovery NAV @ ATH ($)',
+            data: recoveryNAVData,
+            backgroundColor: ['#48cae4', '#f59e0b', '#8b5cf6', '#10b981'],
+            borderRadius: 4
+          }]
+        },
+        plugins: [barLabelsPlugin],
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          layout: { padding: { top: 22 } },
+          plugins: { 
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `Recovery NAV: $${Math.round(ctx.raw).toLocaleString()}`
+              }
+            }
+          },
+          scales: {
+            x: { grid: { color: '#1c2541' }, ticks: { color: '#8d99ae' } },
+            y: { 
+              grace: '15%',
+              grid: { color: '#1c2541' }, 
+              ticks: { 
+                color: '#8d99ae',
+                callback: (val) => '$' + (val / 1000000).toFixed(1) + 'M'
+              } 
+            }
+          }
+        }
+      });
+    }
+
+    function renderHistoryChart() {
+      const ctx = document.getElementById('historyChart').getContext('2d');
+      if (historyChartInstance) historyChartInstance.destroy();
+
+      if (!historicalData.labels || historicalData.labels.length === 0) {
+        generateFallbackHistory(getActiveSymbol());
+      }
+
+      historyChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: historicalData.labels,
+          datasets: [{
+            label: `${getActiveSymbol()} Price ($)`,
+            data: historicalData.prices,
+            borderColor: '#48cae4',
+            backgroundColor: 'rgba(72, 202, 228, 0.08)',
+            borderWidth: 1.8,
+            fill: true,
+            pointRadius: 0,
+            tension: 0.1
+          }]
+        },
+        plugins: [triggerLinesPlugin],
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `Price: $${ctx.raw.toFixed(2)}`
+              }
+            }
+          },
+          scales: {
+            x: { 
+              grid: { color: '#1c2541' }, 
+              ticks: { color: '#8d99ae', maxTicksLimit: 12 } 
+            },
+            y: { 
+              grid: { color: '#1c2541' }, 
+              ticks: { 
+                color: '#8d99ae',
+                callback: (val) => '$' + val
+              } 
+            }
+          }
+        }
+      });
+    }
+
+    window.onload = () => {
+      renderInputs();
+      fetchTickerData();
+    };
+  </script>
+</body>
+</html>
+
+```
